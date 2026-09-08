@@ -1,7 +1,7 @@
 import type { Play, Ticket } from '../src/models/ticket';
 
 export interface PlayMatch {
-  playId: string;
+  playNumber: number;
   whiteMatches: number;
   powerballMatch: boolean;
 }
@@ -16,6 +16,7 @@ export interface TicketCheckResult {
 /** Check one play against one set of drawing results. */
 export function checkPlay(
   play: Play,
+  playNumber: number,
   winningNumbers: number[],
   winningPowerball: number
 ): PlayMatch {
@@ -23,7 +24,7 @@ export function checkPlay(
   const whiteMatches = play.numbers.filter(number => winningSet.has(number)).length;
 
   return {
-    playId: play.id,
+    playNumber,
     whiteMatches,
     powerballMatch: play.powerball === winningPowerball
   };
@@ -35,8 +36,8 @@ export function checkTicket(
   winningNumbers: number[],
   winningPowerball: number
 ): TicketCheckResult {
-  const plays = ticket.plays.map(play =>
-    checkPlay(play, winningNumbers, winningPowerball)
+  const plays = ticket.plays.map((play, index) =>
+    checkPlay(play, index + 1, winningNumbers, winningPowerball)
   );
 
   return {

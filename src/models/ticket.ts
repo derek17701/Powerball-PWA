@@ -1,5 +1,4 @@
 export interface Play {
-  id: string;
   numbers: number[];
   powerball: number;
 }

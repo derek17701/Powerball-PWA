@@ -1,5 +1,5 @@
 -- Powerball PWA server database schema (PostgreSQL)
--- One user can own many tickets. Ticket labels are unique per user, not globally.
+-- A user's ticket label must be unique for each drawing date.
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS tickets (
   double_play BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (user_id, normalized_label)
+  UNIQUE (user_id, drawing_date, normalized_label)
 );
 
 CREATE TABLE IF NOT EXISTS ticket_plays (

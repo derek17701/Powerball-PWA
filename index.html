@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#111827" />
+  <meta name="description" content="Powerball ticket tracker PWA" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="stylesheet" href="styles.css" />
+  <title>Powerball Ticket Tracker</title>
+</head>
+<body>
+  <main class="app-shell">
+    <header>
+      <h1>Powerball Ticket Tracker</h1>
+      <p>Track tickets, labels, Double Play, and drawing results.</p>
+    </header>
+
+    <section class="card">
+      <h2>Add a ticket</h2>
+      <form id="ticket-form">
+        <label>Unique label <input id="label" required maxlength="40" placeholder="PB-001" /></label>
+        <label>Numbers <input id="numbers" required placeholder="1 12 23 34 45" /></label>
+        <label>Powerball <input id="powerball" required inputmode="numeric" placeholder="7" /></label>
+        <label class="checkbox"><input id="double-play" type="checkbox" /> Double Play</label>
+        <button type="submit">Add Ticket</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <div class="section-heading">
+        <h2>My tickets</h2>
+        <span id="ticket-count">0 tickets</span>
+      </div>
+      <div id="ticket-list" class="ticket-list"></div>
+    </section>
+  </main>
+  <script src="app.js" defer></script>
+</body>
+</html>

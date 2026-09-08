@@ -3,7 +3,8 @@ export const POWERBALL_RULES = Object.freeze({
   whiteBallMin: 1,
   whiteBallMax: 69,
   powerballMin: 1,
-  powerballMax: 26
+  powerballMax: 26,
+  maxPlaysPerTicket: 5
 });
 
 export function validateNumbers(numbers: number[]): boolean {

@@ -1,13 +1,6 @@
-import { validateTicket } from '../lib/ticket-validator';
+import { validateTicket, validateTicketLabels } from '../lib/ticket-validator';
 import { loadTickets, saveTickets } from '../lib/storage';
-
-interface Ticket {
-  id: string;
-  label: string;
-  numbers: number[];
-  powerball: number;
-  doublePlay: boolean;
-}
+import type { Ticket } from './models/ticket';
 
 const form = document.querySelector<HTMLFormElement>('#ticket-form');
 const list = document.querySelector<HTMLDivElement>('#ticket-list');
@@ -15,7 +8,7 @@ const count = document.querySelector<HTMLSpanElement>('#ticket-count');
 
 if (!form || !list || !count) throw new Error('Required application elements are missing.');
 
-let tickets: Ticket[] = loadTickets<Ticket>();
+let tickets: Ticket[] = [];
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>'"]/g, char => ({
@@ -38,7 +31,9 @@ function render(): void {
     card.innerHTML = `
       <div>
         <strong>${escapeHtml(ticket.label)}</strong>
-        <div>${ticket.numbers.join(' • ')} <b>PB ${ticket.powerball}</b></div>
+        ${ticket.plays.map((play, index) => `
+          <div>Play ${index + 1}: ${play.numbers.join(' • ')} <b>PB ${play.powerball}</b></div>
+        `).join('')}
         ${ticket.doublePlay ? '<small>Double Play: Yes</small>' : ''}
       </div>
       <button class="delete" data-id="${ticket.id}" type="button">Delete</button>
@@ -47,7 +42,17 @@ function render(): void {
   });
 }
 
-form.addEventListener('submit', event => {
+async function initialize(): Promise<void> {
+  try {
+    tickets = await loadTickets();
+    render();
+  } catch (error) {
+    console.error(error);
+    alert('Unable to load your saved tickets on this device.');
+  }
+}
+
+form.addEventListener('submit', async event => {
   event.preventDefault();
 
   const label = document.querySelector<HTMLInputElement>('#label')?.value.trim() ?? '';
@@ -55,33 +60,60 @@ form.addEventListener('submit', event => {
   const numbers = rawNumbers ? rawNumbers.split(/\s+/).map(Number) : [];
   const powerball = Number(document.querySelector<HTMLInputElement>('#powerball')?.value);
   const doublePlay = document.querySelector<HTMLInputElement>('#double-play')?.checked ?? false;
+  const drawingDate = new Date().toISOString().slice(0, 10);
 
-  if (tickets.some(ticket => ticket.label.toLowerCase() === label.toLowerCase())) {
-    alert('Each ticket must have a unique label.');
+  const labelValidation = validateTicketLabels(tickets, label);
+  if (!labelValidation.valid) {
+    alert(labelValidation.error);
     return;
   }
 
-  const validation = validateTicket({ label, numbers, powerball });
+  const play = { numbers, powerball };
+  const ticketInput = { label, drawingDate, plays: [play], doublePlay };
+  const validation = validateTicket(ticketInput);
   if (!validation.valid) {
     alert(validation.error);
     return;
   }
 
-  tickets.push({ id: crypto.randomUUID(), label, numbers, powerball, doublePlay });
-  saveTickets(tickets);
-  form.reset();
-  render();
+  const ticket: Ticket = {
+    id: crypto.randomUUID(),
+    ...ticketInput
+  };
+
+  tickets.push(ticket);
+
+  try {
+    await saveTickets(tickets);
+    form.reset();
+    render();
+  } catch (error) {
+    tickets = tickets.filter(existing => existing.id !== ticket.id);
+    console.error(error);
+    alert('Unable to save this ticket on the device.');
+  }
 });
 
-list.addEventListener('click', event => {
+list.addEventListener('click', async event => {
   const target = event.target;
   if (!(target instanceof Element)) return;
   const button = target.closest<HTMLButtonElement>('.delete');
   if (!button) return;
 
-  tickets = tickets.filter(ticket => ticket.id !== button.dataset.id);
-  saveTickets(tickets);
-  render();
+  const ticketId = button.dataset.id;
+  if (!ticketId) return;
+
+  const previousTickets = tickets;
+  tickets = tickets.filter(ticket => ticket.id !== ticketId);
+
+  try {
+    await saveTickets(tickets);
+    render();
+  } catch (error) {
+    tickets = previousTickets;
+    console.error(error);
+    alert('Unable to delete this ticket.');
+  }
 });
 
-render();
+void initialize();

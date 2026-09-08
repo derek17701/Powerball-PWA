@@ -27,11 +27,17 @@ The provider reads:
 
 The provider is deliberately isolated behind a small adapter so the results source can be changed later without rewriting the winner engine.
 
-## Drawing processing
+## Drawing processing and automatic retries
 
 `POST /drawings/sync-latest` is protected by `DRAWING_INGEST_TOKEN` and retrieves the latest provider record. It immediately processes the regular drawing and processes Double Play only when `double_play_winning_numbers` is present.
 
-This supports the normal sequence where the regular Powerball drawing is available first and Double Play becomes available roughly 30 minutes later. A trusted scheduler should call `/drawings/sync-latest` repeatedly around drawing times; a later call will pick up the Double Play numbers without duplicating ticket results.
+`server/src/drawing-sync.ts` is the trusted scheduler client. It is designed to run every five minutes, but it only calls the drawing API during the post-drawing window. Powerball drawings are held Monday, Wednesday, and Saturday at 10:59 p.m. ET. The first scheduled opportunity is therefore about +10 minutes after the drawing, followed by five-minute retries only while the database is missing the regular result or Double Play result.
+
+The scheduler first checks PostgreSQL. If both the regular and Double Play records already exist for that drawing date, it makes **no provider API call**. If either result is missing, it calls `/drawings/sync-latest`. If the provider has not published the missing result yet, the job exits and the next scheduled run retries automatically. Once both results exist, subsequent scheduled runs skip the API call entirely.
+
+The retry window currently extends through three hours after the drawing so a delayed provider publication does not require manual intervention. The database upsert and ticket-result upsert paths are idempotent, so repeated checks cannot create duplicate drawing records or duplicate ticket results.
+
+For Render, configure a cron job to run `npm run sync-drawings` on a five-minute schedule. Render cron expressions use UTC, so the application performs the Powerball schedule and Eastern Time window check itself rather than hard-coding a DST-sensitive UTC schedule. Set `DATABASE_URL`, `DRAWING_SYNC_URL`, and `DRAWING_INGEST_TOKEN` on the cron service. Render cron jobs are isolated scheduled services and guarantee that no two runs of the same cron job are active at once.
 
 `POST /drawings` remains available for trusted/manual ingestion and uses the same server-side processing path.
 
@@ -50,8 +56,10 @@ The jackpot is intentionally represented as a `jackpot` prize tier with no fixed
 1. Provision a PostgreSQL database.
 2. Run `schema.sql` against a new database, or run the migrations in order against an existing database.
 3. Set `DATABASE_URL`, `JWT_SECRET`, and a separate `DRAWING_INGEST_TOKEN` environment variable.
-4. The API layer derives the user ID from the authenticated token for every ticket operation, so users cannot read or modify another user's tickets.
-5. Keep `DRAWING_INGEST_TOKEN` private. It is intended for the trusted drawing-results ingestion job, not the browser.
+4. For the automatic drawing scheduler, set `DRAWING_SYNC_URL` to the deployed API's `/drawings/sync-latest` endpoint and give the scheduler the same `DRAWING_INGEST_TOKEN`.
+5. Configure a Render cron job with `npm run sync-drawings` and a five-minute cron schedule. The scheduler itself decides whether a provider call is actually necessary.
+6. The API layer derives the user ID from the authenticated token for every ticket operation, so users cannot read or modify another user's tickets.
+7. Keep `DRAWING_INGEST_TOKEN` private. It is intended for the trusted drawing-results ingestion job, not the browser.
 
 The browser will continue to use IndexedDB for offline operation. Once authentication and the sync API are connected, IndexedDB will act as the local working copy and PostgreSQL as the cloud copy.
 

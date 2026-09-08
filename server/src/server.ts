@@ -2,11 +2,13 @@ import { createHmac, randomBytes, scrypt as scryptCallback, timingSafeEqual } fr
 import { promisify } from 'node:util';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { Pool } from 'pg';
+import { calculateTicketResult, type DrawingType, type PowerPlayMultiplier } from './winner-engine';
 
 const scrypt = promisify(scryptCallback);
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: Number(process.env.DB_POOL_MAX ?? 20) });
 const port = Number(process.env.PORT ?? 3000);
 const jwtSecret = process.env.JWT_SECRET;
+const drawingIngestToken = process.env.DRAWING_INGEST_TOKEN;
 
 if (!process.env.DATABASE_URL || !jwtSecret) {
   console.warn('DATABASE_URL and JWT_SECRET must be set before the server is started.');
@@ -18,15 +20,21 @@ type TicketInput = {
   label: string;
   drawingDate: string;
   plays: Play[];
-  powerPlayMultiplier: 2 | 3 | 4 | 5 | 10 | null;
+  powerPlayMultiplier: PowerPlayMultiplier | null;
   doublePlay: boolean;
+};
+type DrawingInput = {
+  drawingDate: string;
+  drawingType: DrawingType;
+  whiteNumbers: number[];
+  powerball: number;
 };
 
 function json(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
     'Access-Control-Allow-Origin': process.env.CORS_ORIGIN ?? '*',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Drawing-Ingest-Token',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS'
   });
   res.end(JSON.stringify(body));
@@ -68,6 +76,11 @@ function userIdFromRequest(req: IncomingMessage): string | null {
   }
 }
 
+function drawingTokenIsValid(req: IncomingMessage): boolean {
+  const provided = req.headers['x-drawing-ingest-token'];
+  return Boolean(drawingIngestToken && provided && provided === drawingIngestToken);
+}
+
 async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16);
   const derived = (await scrypt(password, salt, 64)) as Buffer;
@@ -99,6 +112,56 @@ function validTicket(ticket: TicketInput): boolean {
     typeof ticket.doublePlay === 'boolean';
 }
 
+function validDrawing(drawing: DrawingInput): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(drawing.drawingDate) &&
+    (drawing.drawingType === 'regular' || drawing.drawingType === 'double_play') &&
+    Array.isArray(drawing.whiteNumbers) && drawing.whiteNumbers.length === 5 &&
+    new Set(drawing.whiteNumbers).size === 5 &&
+    drawing.whiteNumbers.every(n => Number.isInteger(n) && n >= 1 && n <= 69) &&
+    Number.isInteger(drawing.powerball) && drawing.powerball >= 1 && drawing.powerball <= 26;
+}
+
+async function processDrawing(drawingId: string, drawing: DrawingInput): Promise<number> {
+  const tickets = await pool.query(`
+    SELECT t.id, t.power_play_multiplier, t.double_play,
+           COALESCE(json_agg(json_build_object('numbers', p.white_numbers, 'powerball', p.powerball) ORDER BY p.play_number)
+             FILTER (WHERE p.play_number IS NOT NULL), '[]') AS plays
+    FROM tickets t
+    LEFT JOIN ticket_plays p ON p.ticket_id = t.id
+    WHERE t.drawing_date = $1
+      AND ($2 = 'regular' OR t.double_play = TRUE)
+    GROUP BY t.id`, [drawing.drawingDate, drawing.drawingType]);
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    for (const ticket of tickets.rows as Array<{ id: string; power_play_multiplier: PowerPlayMultiplier | null; plays: Play[] }>) {
+      const result = calculateTicketResult(
+        ticket.plays,
+        { whiteNumbers: drawing.whiteNumbers, powerball: drawing.powerball },
+        drawing.drawingType,
+        ticket.power_play_multiplier
+      );
+      await client.query(`
+        INSERT INTO ticket_results (ticket_id, drawing_id, drawing_type, result, has_winner, total_prize, checked_at)
+        VALUES ($1, $2, $3, $4::jsonb, $5, $6, NOW())
+        ON CONFLICT (ticket_id, drawing_id) DO UPDATE SET
+          result = EXCLUDED.result,
+          has_winner = EXCLUDED.has_winner,
+          total_prize = EXCLUDED.total_prize,
+          checked_at = NOW()`,
+        [ticket.id, drawingId, drawing.drawingType, JSON.stringify(result), result.hasWinner, result.totalPrize]);
+    }
+    await client.query('COMMIT');
+    return tickets.rowCount ?? 0;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
   if (req.method === 'OPTIONS') return json(res, 204, {});
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
@@ -123,6 +186,23 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       return json(res, 200, { token: signToken(user.id), user: { id: user.id, email: user.email } });
     }
 
+    if (req.method === 'POST' && url.pathname === '/drawings') {
+      if (!drawingTokenIsValid(req)) return json(res, 401, { error: 'Drawing-ingest authorization required.' });
+      const drawing = await body(req) as DrawingInput;
+      if (!validDrawing(drawing)) return json(res, 400, { error: 'Invalid drawing data.' });
+
+      const result = await pool.query(`
+        INSERT INTO drawings (drawing_date, drawing_type, white_numbers, powerball)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (drawing_date, drawing_type) DO UPDATE SET
+          white_numbers = EXCLUDED.white_numbers,
+          powerball = EXCLUDED.powerball
+        RETURNING id, drawing_date, drawing_type, white_numbers, powerball`,
+        [drawing.drawingDate, drawing.drawingType, drawing.whiteNumbers, drawing.powerball]);
+      const processedTickets = await processDrawing(result.rows[0].id, drawing);
+      return json(res, 200, { drawing: result.rows[0], processedTickets });
+    }
+
     const userId = userIdFromRequest(req);
     if (!userId) return json(res, 401, { error: 'Authentication required.' });
 
@@ -132,6 +212,24 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
                COALESCE(json_agg(json_build_object('numbers', p.white_numbers, 'powerball', p.powerball) ORDER BY p.play_number) FILTER (WHERE p.play_number IS NOT NULL), '[]') AS plays
         FROM tickets t LEFT JOIN ticket_plays p ON p.ticket_id = t.id
         WHERE t.user_id = $1 GROUP BY t.id ORDER BY t.drawing_date DESC, t.created_at DESC`, [userId]);
+      return json(res, 200, result.rows);
+    }
+
+    if (req.method === 'GET' && url.pathname === '/tickets/results') {
+      const drawingDate = url.searchParams.get('drawingDate');
+      const params: string[] = [userId];
+      let dateFilter = '';
+      if (drawingDate) {
+        dateFilter = ' AND t.drawing_date = $2';
+        params.push(drawingDate);
+      }
+      const result = await pool.query(`
+        SELECT tr.ticket_id, t.label, t.drawing_date, tr.drawing_id, tr.drawing_type,
+               tr.result, tr.has_winner, tr.total_prize, tr.checked_at
+        FROM ticket_results tr
+        JOIN tickets t ON t.id = tr.ticket_id
+        WHERE t.user_id = $1${dateFilter}
+        ORDER BY t.drawing_date DESC, t.label, tr.drawing_type`, params);
       return json(res, 200, result.rows);
     }
 
@@ -146,6 +244,13 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
+        if (ticketId) {
+          const ownership = await client.query('SELECT id FROM tickets WHERE id = $1 AND user_id = $2 FOR UPDATE', [ticket.id, userId]);
+          if (!ownership.rowCount) {
+            await client.query('ROLLBACK');
+            return json(res, 404, { error: 'Ticket not found.' });
+          }
+        }
         await client.query(`
           INSERT INTO tickets (id, user_id, label, normalized_label, drawing_date, power_play_multiplier, double_play, updated_at)
           VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
@@ -175,7 +280,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
 
     return json(res, 404, { error: 'Not found.' });
   } catch (error: any) {
-    if (error?.code === '23505') return json(res, 409, { error: 'That ticket label is already in use for this account.' });
+    if (error?.code === '23505') return json(res, 409, { error: 'That ticket label is already in use for this account on this drawing date.' });
     console.error(error);
     return json(res, 500, { error: 'Server error.' });
   }

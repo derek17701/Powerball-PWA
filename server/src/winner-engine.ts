@@ -83,7 +83,8 @@ export function calculatePlayResult(
   playNumber: number,
   drawing: DrawResult,
   drawingType: DrawingType,
-  powerPlayMultiplier: PowerPlayMultiplier | null
+  ticketHasPowerPlay: boolean,
+  officialPowerPlayMultiplier: PowerPlayMultiplier | null
 ): PlayResult {
   const winningSet = new Set(drawing.whiteNumbers);
   const whiteMatches = numbers.filter(number => winningSet.has(number)).length;
@@ -94,8 +95,14 @@ export function calculatePlayResult(
   let prizeAmount = base;
   if (drawingType === 'regular' && prizeTier === 'jackpot') {
     prizeAmount = null;
-  } else if (drawingType === 'regular' && base !== null && powerPlayMultiplier !== null && prizeTier !== 'match_5') {
-    prizeAmount = base * powerPlayMultiplier;
+  } else if (
+    drawingType === 'regular' &&
+    base !== null &&
+    ticketHasPowerPlay &&
+    officialPowerPlayMultiplier !== null &&
+    prizeTier !== 'match_5'
+  ) {
+    prizeAmount = base * officialPowerPlayMultiplier;
   }
 
   return {
@@ -112,7 +119,8 @@ export function calculateTicketResult(
   plays: Array<{ numbers: number[]; powerball: number }>,
   drawing: DrawResult,
   drawingType: DrawingType,
-  powerPlayMultiplier: PowerPlayMultiplier | null
+  ticketHasPowerPlay: boolean,
+  officialPowerPlayMultiplier: PowerPlayMultiplier | null
 ): TicketResult {
   const results = plays.map((play, index) => calculatePlayResult(
     play.numbers,
@@ -120,7 +128,8 @@ export function calculateTicketResult(
     index + 1,
     drawing,
     drawingType,
-    powerPlayMultiplier
+    ticketHasPowerPlay,
+    officialPowerPlayMultiplier
   ));
 
   return {

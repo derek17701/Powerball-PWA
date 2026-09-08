@@ -133,7 +133,7 @@ form.addEventListener('submit', async event => {
   const doublePlay = document.querySelector<HTMLInputElement>('#double-play')?.checked ?? false;
   const plays = readPlays();
 
-  const labelValidation = validateTicketLabels(tickets, label);
+  const labelValidation = validateTicketLabels(tickets, label, drawingDate);
   if (!labelValidation.valid) {
     alert(labelValidation.error);
     return;

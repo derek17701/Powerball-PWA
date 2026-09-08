@@ -4,7 +4,7 @@ export interface ProviderDrawing {
   drawingDate: string;
   whiteNumbers: number[];
   powerball: number;
-  powerPlayMultiplier: 2 | 3 | 4 | 5 | 10 | null;
+  powerPlayMultiplier: 2 | 3 | 4 | 5 | 10;
   doublePlay: { whiteNumbers: number[]; powerball: number } | null;
   source: string;
 }
@@ -53,9 +53,10 @@ export async function fetchLatestPowerballDrawing(): Promise<ProviderDrawing> {
   if (!regular || !drawingDate) throw new Error('Powerball results API returned an invalid regular drawing.');
 
   const multiplierNumber = Number(row.multiplier);
-  const powerPlayMultiplier = [2, 3, 4, 5, 10].includes(multiplierNumber)
-    ? multiplierNumber as 2 | 3 | 4 | 5 | 10
-    : null;
+  if (![2, 3, 4, 5, 10].includes(multiplierNumber)) {
+    throw new Error('Powerball results API returned an invalid Power Play multiplier.');
+  }
+  const powerPlayMultiplier = multiplierNumber as 2 | 3 | 4 | 5 | 10;
 
   const doublePlay = parseSixNumbers(row.double_play_winning_numbers ?? undefined);
 

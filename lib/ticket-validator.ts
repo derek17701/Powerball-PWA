@@ -54,13 +54,20 @@ export function validateTicket({ label, drawingDate, plays, powerPlayMultiplier 
   return { valid: true };
 }
 
-export function validateTicketLabels(tickets: Ticket[], label: string, excludeTicketId?: string): ValidationResult {
+export function validateTicketLabels(
+  tickets: Ticket[],
+  label: string,
+  drawingDate: string,
+  excludeTicketId?: string
+): ValidationResult {
   const normalizedLabel = label.trim().toLowerCase();
   const duplicate = tickets.some(
-    ticket => ticket.id !== excludeTicketId && ticket.label.trim().toLowerCase() === normalizedLabel
+    ticket => ticket.id !== excludeTicketId &&
+      ticket.drawingDate === drawingDate &&
+      ticket.label.trim().toLowerCase() === normalizedLabel
   );
 
   return duplicate
-    ? { valid: false, error: 'Each ticket must have a unique label.' }
+    ? { valid: false, error: 'Each ticket label must be unique for its drawing date.' }
     : { valid: true };
 }

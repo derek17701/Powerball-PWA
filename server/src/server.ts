@@ -3,6 +3,7 @@ import { promisify } from 'node:util';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { Pool } from 'pg';
 import { calculateTicketResult, type DrawingType, type PowerPlayMultiplier } from './winner-engine';
+import { fetchLatestPowerballDrawing, type ProviderDrawing } from './drawing-provider';
 
 const scrypt = promisify(scryptCallback);
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: Number(process.env.DB_POOL_MAX ?? 20) });
@@ -28,6 +29,9 @@ type DrawingInput = {
   drawingType: DrawingType;
   whiteNumbers: number[];
   powerball: number;
+  powerPlayMultiplier?: PowerPlayMultiplier | null;
+  source?: string | null;
+  sourceRetrievedAt?: string | null;
 };
 
 function json(res: ServerResponse, status: number, body: unknown): void {
@@ -113,12 +117,17 @@ function validTicket(ticket: TicketInput): boolean {
 }
 
 function validDrawing(drawing: DrawingInput): boolean {
+  const multiplierValid = drawing.drawingType === 'double_play'
+    ? drawing.powerPlayMultiplier === null || drawing.powerPlayMultiplier === undefined
+    : drawing.powerPlayMultiplier === null || drawing.powerPlayMultiplier === undefined || [2, 3, 4, 5, 10].includes(drawing.powerPlayMultiplier);
+
   return /^\d{4}-\d{2}-\d{2}$/.test(drawing.drawingDate) &&
     (drawing.drawingType === 'regular' || drawing.drawingType === 'double_play') &&
     Array.isArray(drawing.whiteNumbers) && drawing.whiteNumbers.length === 5 &&
     new Set(drawing.whiteNumbers).size === 5 &&
     drawing.whiteNumbers.every(n => Number.isInteger(n) && n >= 1 && n <= 69) &&
-    Number.isInteger(drawing.powerball) && drawing.powerball >= 1 && drawing.powerball <= 26;
+    Number.isInteger(drawing.powerball) && drawing.powerball >= 1 && drawing.powerball <= 26 &&
+    multiplierValid;
 }
 
 async function processDrawing(drawingId: string, drawing: DrawingInput): Promise<number> {
@@ -140,7 +149,8 @@ async function processDrawing(drawingId: string, drawing: DrawingInput): Promise
         ticket.plays,
         { whiteNumbers: drawing.whiteNumbers, powerball: drawing.powerball },
         drawing.drawingType,
-        ticket.power_play_multiplier
+        ticket.power_play_multiplier !== null,
+        drawing.powerPlayMultiplier ?? null
       );
       await client.query(`
         INSERT INTO ticket_results (ticket_id, drawing_id, drawing_type, result, has_winner, total_prize, checked_at)
@@ -160,6 +170,54 @@ async function processDrawing(drawingId: string, drawing: DrawingInput): Promise
   } finally {
     client.release();
   }
+}
+
+async function saveDrawingAndProcess(drawing: DrawingInput): Promise<{ drawing: unknown; processedTickets: number }> {
+  if (!validDrawing(drawing)) throw new Error('Invalid drawing data.');
+  const retrievedAt = drawing.sourceRetrievedAt ?? new Date().toISOString();
+  const result = await pool.query(`
+    INSERT INTO drawings (drawing_date, drawing_type, white_numbers, powerball, power_play_multiplier, source, source_retrieved_at)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    ON CONFLICT (drawing_date, drawing_type) DO UPDATE SET
+      white_numbers = EXCLUDED.white_numbers,
+      powerball = EXCLUDED.powerball,
+      power_play_multiplier = EXCLUDED.power_play_multiplier,
+      source = EXCLUDED.source,
+      source_retrieved_at = EXCLUDED.source_retrieved_at
+    RETURNING id, drawing_date, drawing_type, white_numbers, powerball, power_play_multiplier, source, source_retrieved_at`,
+    [drawing.drawingDate, drawing.drawingType, drawing.whiteNumbers, drawing.powerball, drawing.powerPlayMultiplier ?? null, drawing.source ?? null, retrievedAt]);
+  const processedTickets = await processDrawing(result.rows[0].id, drawing);
+  return { drawing: result.rows[0], processedTickets };
+}
+
+async function syncLatestProviderDrawing(): Promise<{ regular: unknown; doublePlay: unknown | null; doublePlayPending: boolean }> {
+  const provider: ProviderDrawing = await fetchLatestPowerballDrawing();
+  const sourceRetrievedAt = new Date().toISOString();
+
+  const regular = await saveDrawingAndProcess({
+    drawingDate: provider.drawingDate,
+    drawingType: 'regular',
+    whiteNumbers: provider.whiteNumbers,
+    powerball: provider.powerball,
+    powerPlayMultiplier: provider.powerPlayMultiplier,
+    source: provider.source,
+    sourceRetrievedAt
+  });
+
+  let doublePlay: unknown | null = null;
+  if (provider.doublePlay) {
+    doublePlay = await saveDrawingAndProcess({
+      drawingDate: provider.drawingDate,
+      drawingType: 'double_play',
+      whiteNumbers: provider.doublePlay.whiteNumbers,
+      powerball: provider.doublePlay.powerball,
+      powerPlayMultiplier: null,
+      source: provider.source,
+      sourceRetrievedAt
+    });
+  }
+
+  return { regular, doublePlay, doublePlayPending: !provider.doublePlay };
 }
 
 async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -186,21 +244,18 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       return json(res, 200, { token: signToken(user.id), user: { id: user.id, email: user.email } });
     }
 
+    if (req.method === 'POST' && url.pathname === '/drawings/sync-latest') {
+      if (!drawingTokenIsValid(req)) return json(res, 401, { error: 'Drawing-ingest authorization required.' });
+      const synced = await syncLatestProviderDrawing();
+      return json(res, 200, synced);
+    }
+
     if (req.method === 'POST' && url.pathname === '/drawings') {
       if (!drawingTokenIsValid(req)) return json(res, 401, { error: 'Drawing-ingest authorization required.' });
       const drawing = await body(req) as DrawingInput;
       if (!validDrawing(drawing)) return json(res, 400, { error: 'Invalid drawing data.' });
-
-      const result = await pool.query(`
-        INSERT INTO drawings (drawing_date, drawing_type, white_numbers, powerball)
-        VALUES ($1, $2, $3, $4)
-        ON CONFLICT (drawing_date, drawing_type) DO UPDATE SET
-          white_numbers = EXCLUDED.white_numbers,
-          powerball = EXCLUDED.powerball
-        RETURNING id, drawing_date, drawing_type, white_numbers, powerball`,
-        [drawing.drawingDate, drawing.drawingType, drawing.whiteNumbers, drawing.powerball]);
-      const processedTickets = await processDrawing(result.rows[0].id, drawing);
-      return json(res, 200, { drawing: result.rows[0], processedTickets });
+      const saved = await saveDrawingAndProcess(drawing);
+      return json(res, 200, saved);
     }
 
     const userId = userIdFromRequest(req);

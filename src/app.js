@@ -1,13 +1,11 @@
+import { validateTicket } from '../lib/ticket-validator.js';
+import { loadTickets, saveTickets } from '../lib/storage.js';
+
 const form = document.querySelector('#ticket-form');
 const list = document.querySelector('#ticket-list');
 const count = document.querySelector('#ticket-count');
-const STORAGE_KEY = 'powerball-tickets-v1';
 
-let tickets = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-
-function save() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(tickets));
-}
+let tickets = loadTickets();
 
 function render() {
   list.innerHTML = '';
@@ -51,18 +49,14 @@ form.addEventListener('submit', event => {
     return;
   }
 
-  if (numbers.length !== 5 || numbers.some(n => !Number.isInteger(n) || n < 1 || n > 69)) {
-    alert('Enter five white-ball numbers from 1 to 69.');
-    return;
-  }
-
-  if (!Number.isInteger(powerball) || powerball < 1 || powerball > 26) {
-    alert('Enter a Powerball number from 1 to 26.');
+  const validation = validateTicket({ label, numbers, powerball });
+  if (!validation.valid) {
+    alert(validation.error);
     return;
   }
 
   tickets.push({ id: crypto.randomUUID(), label, numbers, powerball, doublePlay });
-  save();
+  saveTickets(tickets);
   form.reset();
   render();
 });
@@ -71,7 +65,7 @@ list.addEventListener('click', event => {
   const button = event.target.closest('.delete');
   if (!button) return;
   tickets = tickets.filter(ticket => ticket.id !== button.dataset.id);
-  save();
+  saveTickets(tickets);
   render();
 });
 

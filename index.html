@@ -13,17 +13,50 @@
   <main class="app-shell">
     <header>
       <h1>Powerball Ticket Tracker</h1>
-      <p>Track tickets, labels, Double Play, and drawing results.</p>
+      <p>Track physical tickets, up to five plays, Power Play, Double Play, and drawing results.</p>
     </header>
 
     <section class="card">
-      <h2>Add a ticket</h2>
+      <h2>Add or review a ticket</h2>
+      <p class="hint">Enter the unique label yourself. It is your identifier for the physical ticket and is not expected to be printed on the ticket.</p>
+      <p class="hint">Scanned ticket data will use this same editable form so you can correct every extracted field before saving.</p>
+
       <form id="ticket-form">
-        <label>Unique label <input id="label" required maxlength="40" placeholder="PB-001" /></label>
-        <label>Numbers <input id="numbers" required placeholder="1 12 23 34 45" /></label>
-        <label>Powerball <input id="powerball" required inputmode="numeric" placeholder="7" /></label>
-        <label class="checkbox"><input id="double-play" type="checkbox" /> Double Play</label>
-        <button type="submit">Add Ticket</button>
+        <label>Unique ticket label
+          <input id="label" required maxlength="40" placeholder="PB-001" autocomplete="off" />
+        </label>
+
+        <label>Drawing date
+          <input id="drawing-date" type="date" required />
+        </label>
+
+        <div class="field-group">
+          <label for="power-play">Power Play multiplier</label>
+          <select id="power-play">
+            <option value="">No Power Play</option>
+            <option value="2">2X</option>
+            <option value="3">3X</option>
+            <option value="4">4X</option>
+            <option value="5">5X</option>
+            <option value="10">10X</option>
+          </select>
+        </div>
+
+        <label class="checkbox">
+          <input id="double-play" type="checkbox" />
+          Double Play
+        </label>
+
+        <div>
+          <div class="section-heading">
+            <h3>Plays</h3>
+            <span class="hint">1–5 plays per ticket</span>
+          </div>
+          <div id="plays" class="plays"></div>
+          <button id="add-play" class="secondary" type="button">Add another play</button>
+        </div>
+
+        <button type="submit">Save ticket</button>
       </form>
     </section>
 

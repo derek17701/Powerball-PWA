@@ -1,10 +1,11 @@
 import { POWERBALL_RULES, validateNumbers, validatePowerball } from './powerball';
-import type { Play, Ticket } from '../src/models/ticket';
+import type { Play, PowerPlayMultiplier, Ticket } from '../src/models/ticket';
 
 export interface TicketInput {
   label: string;
   drawingDate: string;
   plays: Play[];
+  powerPlayMultiplier: PowerPlayMultiplier | null;
   doublePlay: boolean;
 }
 
@@ -25,13 +26,13 @@ export function validatePlay(play: Play): ValidationResult {
   return { valid: true };
 }
 
-export function validateTicket({ label, drawingDate, plays }: TicketInput): ValidationResult {
+export function validateTicket({ label, drawingDate, plays, powerPlayMultiplier }: TicketInput): ValidationResult {
   if (!label.trim()) {
-    return { valid: false, error: 'A unique ticket label is required.' };
+    return { valid: false, error: 'A unique ticket label is required. Enter it manually.' };
   }
 
-  if (!drawingDate.trim()) {
-    return { valid: false, error: 'A drawing date is required.' };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(drawingDate)) {
+    return { valid: false, error: 'Enter a valid drawing date.' };
   }
 
   if (plays.length < 1 || plays.length > POWERBALL_RULES.maxPlaysPerTicket) {
@@ -39,6 +40,10 @@ export function validateTicket({ label, drawingDate, plays }: TicketInput): Vali
       valid: false,
       error: `A ticket must contain between 1 and ${POWERBALL_RULES.maxPlaysPerTicket} plays.`
     };
+  }
+
+  if (powerPlayMultiplier !== null && ![2, 3, 4, 5, 10].includes(powerPlayMultiplier)) {
+    return { valid: false, error: 'Select a valid Power Play multiplier.' };
   }
 
   for (const play of plays) {

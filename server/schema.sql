@@ -38,6 +38,9 @@ CREATE TABLE IF NOT EXISTS drawings (
   drawing_type TEXT NOT NULL CHECK (drawing_type IN ('regular', 'double_play')),
   white_numbers SMALLINT[] NOT NULL,
   powerball SMALLINT NOT NULL CHECK (powerball BETWEEN 1 AND 26),
+  power_play_multiplier SMALLINT NULL CHECK (power_play_multiplier IN (2, 3, 4, 5, 10)),
+  source TEXT NULL,
+  source_retrieved_at TIMESTAMPTZ NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (drawing_date, drawing_type)
 );

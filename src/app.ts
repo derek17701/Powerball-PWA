@@ -2,8 +2,12 @@ import { validateTicket, validateTicketLabels } from '../lib/ticket-validator';
 import { loadTickets, saveTickets } from '../lib/storage';
 import type { Play, PowerPlayMultiplier, Ticket } from './models/ticket';
 
+// A physical ticket can contain up to five plays. The same limit is enforced
+// by the shared validator so the UI and data layer stay in agreement.
 const MAX_PLAYS = 5;
 
+// Cache the important form elements once during startup. Failing fast here
+// makes an incomplete HTML template much easier to diagnose during development.
 const form = document.querySelector<HTMLFormElement>('#ticket-form');
 const playsContainer = document.querySelector<HTMLDivElement>('#plays');
 const addPlayButton = document.querySelector<HTMLButtonElement>('#add-play');
@@ -14,15 +18,20 @@ if (!form || !playsContainer || !addPlayButton || !list || !count) {
   throw new Error('Required application elements are missing.');
 }
 
+// The current browser copy of the user's tickets is kept in memory for fast
+// rendering. IndexedDB is the persistent local copy and will later be paired
+// with server synchronization.
 let tickets: Ticket[] = [];
 let playCount = 1;
 
+/** Escape user-entered text before placing it into an HTML template. */
 function escapeHtml(value: string): string {
   return value.replace(/[&<>'"]/g, char => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
   }[char] ?? char));
 }
 
+/** Build the editable HTML controls for one numbered play. */
 function playMarkup(index: number): string {
   return `
     <fieldset class="play" data-play="${index}">
@@ -38,6 +47,10 @@ function playMarkup(index: number): string {
   `;
 }
 
+/**
+ * Rebuild the play editor while preserving values from existingPlays when
+ * possible. This is used both for new tickets and when adding/removing plays.
+ */
 function renderPlayEditor(existingPlays: Play[] = []): void {
   playsContainer.innerHTML = Array.from({ length: playCount }, (_, index) => playMarkup(index + 1)).join('');
 
@@ -55,6 +68,7 @@ function renderPlayEditor(existingPlays: Play[] = []): void {
   addPlayButton.textContent = playCount >= MAX_PLAYS ? 'Maximum 5 plays' : 'Add another play';
 }
 
+/** Read the current values from all visible play controls. */
 function readPlays(): Play[] {
   return Array.from(playsContainer.querySelectorAll<HTMLElement>('.play')).map(playElement => {
     const rawNumbers = playElement.querySelector<HTMLInputElement>('.numbers')?.value.trim() ?? '';
@@ -64,6 +78,10 @@ function readPlays(): Play[] {
   });
 }
 
+/**
+ * Render the current ticket collection. Labels are escaped because they are
+ * user input and are inserted into an HTML string rather than textContent.
+ */
 function render(): void {
   list.innerHTML = '';
   count.textContent = `${tickets.length} ticket${tickets.length === 1 ? '' : 's'}`;
@@ -91,6 +109,7 @@ function render(): void {
   });
 }
 
+/** Load the browser's saved tickets before enabling normal UI interaction. */
 async function initialize(): Promise<void> {
   try {
     tickets = await loadTickets();
@@ -102,6 +121,8 @@ async function initialize(): Promise<void> {
   }
 }
 
+// Adding a play preserves the values already entered so the user does not
+// lose partially completed ticket information while editing.
 addPlayButton.addEventListener('click', () => {
   if (playCount < MAX_PLAYS) {
     const currentPlays = readPlays();
@@ -110,6 +131,8 @@ addPlayButton.addEventListener('click', () => {
   }
 });
 
+// Event delegation lets dynamically created Remove Play buttons share one
+// listener instead of registering a new listener every time the editor changes.
 playsContainer.addEventListener('click', event => {
   const target = event.target;
   if (!(target instanceof Element)) return;
@@ -123,6 +146,11 @@ playsContainer.addEventListener('click', event => {
   }
 });
 
+/**
+ * Validate and save a new ticket. Local label uniqueness is checked before the
+ * record is created; the future server sync must enforce the same rule again
+ * because browser-side validation cannot protect against another device.
+ */
 form.addEventListener('submit', async event => {
   event.preventDefault();
 
@@ -146,6 +174,8 @@ form.addEventListener('submit', async event => {
     return;
   }
 
+  // crypto.randomUUID() gives the local record a stable identifier that can
+  // also be carried into a later server synchronization operation.
   const ticket: Ticket = { id: crypto.randomUUID(), ...ticketInput };
   tickets.push(ticket);
 
@@ -156,12 +186,15 @@ form.addEventListener('submit', async event => {
     renderPlayEditor();
     render();
   } catch (error) {
+    // Roll back the in-memory change if IndexedDB could not persist it.
     tickets = tickets.filter(existing => existing.id !== ticket.id);
     console.error(error);
     alert('Unable to save this ticket on the device.');
   }
 });
 
+// Ticket deletion uses the same optimistic UI pattern as creation, with an
+// in-memory rollback if the IndexedDB write fails.
 list.addEventListener('click', async event => {
   const target = event.target;
   if (!(target instanceof Element)) return;
@@ -184,4 +217,6 @@ list.addEventListener('click', async event => {
   }
 });
 
+// Startup is intentionally asynchronous because IndexedDB must be opened
+// before the saved ticket collection can be rendered.
 void initialize();

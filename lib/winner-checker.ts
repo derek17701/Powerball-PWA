@@ -1,11 +1,13 @@
 import type { Play, Ticket } from '../src/models/ticket';
 
+/** Match counts for one play, without calculating the monetary prize. */
 export interface PlayMatch {
   playNumber: number;
   whiteMatches: number;
   powerballMatch: boolean;
 }
 
+/** Lightweight client-side summary used for quick local result checks. */
 export interface TicketCheckResult {
   ticketId: string;
   label: string;
@@ -13,7 +15,11 @@ export interface TicketCheckResult {
   hasWinner: boolean;
 }
 
-/** Check one play against one set of drawing results. */
+/**
+ * Compare one play with one set of drawing numbers.
+ * This helper only counts matching numbers; the server winner engine remains
+ * authoritative for official prize tiers and prize amounts.
+ */
 export function checkPlay(
   play: Play,
   playNumber: number,
@@ -30,7 +36,11 @@ export function checkPlay(
   };
 }
 
-/** Check every play on a physical ticket. */
+/**
+ * Check every play on a ticket for matching numbers.
+ * This is intended for fast local feedback; it should not replace the server's
+ * official prize calculation when results are finalized.
+ */
 export function checkTicket(
   ticket: Ticket,
   winningNumbers: number[],

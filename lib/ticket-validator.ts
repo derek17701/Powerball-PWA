@@ -1,6 +1,7 @@
 import { POWERBALL_RULES, validateNumbers, validatePowerball } from './powerball';
 import type { Play, PowerPlayMultiplier, Ticket } from '../src/models/ticket';
 
+/** The fields needed to validate a ticket before it is converted to a Ticket record. */
 export interface TicketInput {
   label: string;
   drawingDate: string;
@@ -9,11 +10,17 @@ export interface TicketInput {
   doublePlay: boolean;
 }
 
+/** Consistent result shape returned by the validation functions. */
 export interface ValidationResult {
   valid: boolean;
   error?: string;
 }
 
+/**
+ * Validates one play using the central Powerball number rules.
+ * Keeping play validation separate lets the scanner/review screen reuse the
+ * exact same checks as manual entry in the future.
+ */
 export function validatePlay(play: Play): ValidationResult {
   if (!validateNumbers(play.numbers)) {
     return { valid: false, error: 'Enter five unique white-ball numbers from 1 to 69 for each play.' };
@@ -26,6 +33,11 @@ export function validatePlay(play: Play): ValidationResult {
   return { valid: true };
 }
 
+/**
+ * Validates the ticket-level fields and every play before saving.
+ * The label is checked for presence here; uniqueness is handled separately
+ * because it depends on the user's existing tickets and drawing date.
+ */
 export function validateTicket({ label, drawingDate, plays, powerPlayMultiplier }: TicketInput): ValidationResult {
   if (!label.trim()) {
     return { valid: false, error: 'A unique ticket label is required. Enter it manually.' };
@@ -54,6 +66,12 @@ export function validateTicket({ label, drawingDate, plays, powerPlayMultiplier 
   return { valid: true };
 }
 
+/**
+ * Checks the local ticket list for a duplicate label on the same drawing date.
+ * Labels are normalized for comparison so capitalization and surrounding
+ * spaces do not create two labels that appear different but are effectively
+ * the same to a user. The server enforces the same rule authoritatively.
+ */
 export function validateTicketLabels(
   tickets: Ticket[],
   label: string,

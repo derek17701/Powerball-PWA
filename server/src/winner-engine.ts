@@ -1,11 +1,16 @@
+/** Official Power Play multiplier values accepted by the winner engine. */
 export type PowerPlayMultiplier = 2 | 3 | 4 | 5 | 10;
+
+/** Identifies which drawing's prize table is being evaluated. */
 export type DrawingType = 'regular' | 'double_play';
 
+/** Winning numbers for one drawing. */
 export interface DrawResult {
   whiteNumbers: number[];
   powerball: number;
 }
 
+/** Detailed result for one numbered play on a ticket. */
 export interface PlayResult {
   playNumber: number;
   whiteMatches: number;
@@ -15,6 +20,7 @@ export interface PlayResult {
   isWinner: boolean;
 }
 
+/** Combined results for every play on one ticket. */
 export interface TicketResult {
   drawingType: DrawingType;
   plays: PlayResult[];
@@ -22,6 +28,10 @@ export interface TicketResult {
   totalPrize: number;
 }
 
+/**
+ * Maps a match combination to its prize tier. Double Play has a separate
+ * prize table, so it is selected before the regular Powerball table.
+ */
 function prizeFor(whiteMatches: number, powerballMatch: boolean, drawingType: DrawingType): string | null {
   if (drawingType === 'double_play') {
     if (whiteMatches === 5 && powerballMatch) return 'top_prize';
@@ -48,6 +58,10 @@ function prizeFor(whiteMatches: number, powerballMatch: boolean, drawingType: Dr
   return null;
 }
 
+/**
+ * Returns the base fixed prize for a tier. A regular jackpot is represented
+ * by null because its cash value depends on the official jackpot amount.
+ */
 function basePrize(tier: string, drawingType: DrawingType): number | null {
   if (drawingType === 'double_play') {
     const prizes: Record<string, number> = {
@@ -77,6 +91,15 @@ function basePrize(tier: string, drawingType: DrawingType): number | null {
   return prizes[tier] ?? null;
 }
 
+/**
+ * Calculates the result for one play.
+ *
+ * Power Play is applied only to regular-drawing fixed prizes. The official
+ * multiplier belongs to the drawing, while the ticket only records whether
+ * Power Play was purchased. Double Play never receives the regular Power
+ * Play multiplier. Match 5 plus Power Play is always the special $2 million
+ * prize rather than being multiplied again.
+ */
 export function calculatePlayResult(
   numbers: number[],
   powerball: number,
@@ -115,6 +138,11 @@ export function calculatePlayResult(
   };
 }
 
+/**
+ * Calculates every play on a ticket and aggregates the ticket-level result.
+ * Play numbering is derived from array position, keeping the data model simple
+ * and matching the way plays are displayed to the user.
+ */
 export function calculateTicketResult(
   plays: Array<{ numbers: number[]; powerball: number }>,
   drawing: DrawResult,

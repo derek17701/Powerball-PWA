@@ -8,14 +8,19 @@ header p { margin-top: 0; color: #4b5563; }
 form { display: grid; gap: 12px; }
 label { display: grid; gap: 6px; font-weight: 600; }
 input:not([type="checkbox"]) { width: 100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 9px; font: inherit; }
-.checkbox { display: flex; grid-template-columns: auto 1fr; align-items: center; gap: 8px; }
+.checkbox { display: flex; align-items: center; gap: 8px; }
 button { border: 0; border-radius: 9px; padding: 12px 16px; font: inherit; font-weight: 700; cursor: pointer; background: #111827; color: white; }
+.button-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.secondary { width: 100%; margin-top: 14px; background: #e5e7eb; color: #111827; }
 .section-heading, .ticket { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .section-heading h2 { margin: 0; }
 #ticket-count, small { color: #6b7280; }
 .ticket-list { display: grid; gap: 10px; margin-top: 14px; }
 .ticket { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; }
+.ticket.winner { border: 2px solid #16a34a; background: #f0fdf4; }
 .ticket strong { display: block; margin-bottom: 5px; }
 .ticket b { margin-left: 8px; }
+.winner-badge { display: inline-block; margin-bottom: 6px; padding: 4px 8px; border-radius: 999px; background: #16a34a; color: white; font-size: 0.8rem; font-weight: 800; }
+.winner-summary { margin-top: 14px; padding: 12px; border-radius: 10px; background: #f0fdf4; border: 1px solid #bbf7d0; font-weight: 700; }
 .delete { background: #dc2626; padding: 8px 10px; }
 .empty { color: #6b7280; text-align: center; }

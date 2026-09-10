@@ -1,11 +1,46 @@
 import { validateTicket } from '../lib/ticket-validator.js';
 import { loadTickets, saveTickets } from '../lib/storage.js';
+import {
+  supabase,
+  getCurrentUser,
+  signUp,
+  signIn,
+  signOut,
+  loadServerTickets,
+  createServerTicket,
+  deleteServerTicket
+} from '../lib/database.js';
 
 const form = document.querySelector('#ticket-form');
 const list = document.querySelector('#ticket-list');
 const count = document.querySelector('#ticket-count');
+const drawingDateInput = document.querySelector('#drawing-date');
+const authForm = document.querySelector('#auth-form');
+const emailInput = document.querySelector('#email');
+const passwordInput = document.querySelector('#password');
+const accountStatus = document.querySelector('#account-status');
+const signUpButton = document.querySelector('#sign-up');
+const signOutButton = document.querySelector('#sign-out');
 
 let tickets = loadTickets();
+let currentUser = null;
+
+function today() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+drawingDateInput.value = today();
+
+function normalizeServerTicket(ticket) {
+  return {
+    id: ticket.id,
+    drawingDate: ticket.drawing_date,
+    label: ticket.label,
+    numbers: ticket.numbers,
+    powerball: ticket.powerball,
+    doublePlay: ticket.double_play
+  };
+}
 
 function render() {
   list.innerHTML = '';
@@ -22,6 +57,7 @@ function render() {
     card.innerHTML = `
       <div>
         <strong>${escapeHtml(ticket.label)}</strong>
+        <div><small>Drawing: ${escapeHtml(ticket.drawingDate || 'Not set')}</small></div>
         <div>${ticket.numbers.join(' • ')} <b>PB ${ticket.powerball}</b></div>
         ${ticket.doublePlay ? '<small>Double Play: Yes</small>' : ''}
       </div>
@@ -32,22 +68,51 @@ function render() {
 }
 
 function escapeHtml(value) {
-  return value.replace(/[&<>'"]/g, char => ({
+  return String(value).replace(/[&<>'"]/g, char => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
   }[char]));
 }
 
-form.addEventListener('submit', event => {
+function setAccountUi() {
+  if (!supabase) {
+    accountStatus.textContent = 'Server database is not configured yet. Tickets will use this browser until Supabase is connected.';
+    signOutButton.hidden = true;
+    return;
+  }
+
+  if (currentUser) {
+    accountStatus.textContent = `Signed in as ${currentUser.email}`;
+    signOutButton.hidden = false;
+    signUpButton.hidden = true;
+  } else {
+    accountStatus.textContent = 'Sign in to save your tickets to your account on the server.';
+    signOutButton.hidden = true;
+    signUpButton.hidden = false;
+  }
+}
+
+async function refreshTickets() {
+  if (!currentUser) {
+    render();
+    return;
+  }
+
+  try {
+    tickets = (await loadServerTickets()).map(normalizeServerTicket);
+    render();
+  } catch (error) {
+    console.error(error);
+    alert(`Could not load server tickets: ${error.message}`);
+  }
+}
+
+form.addEventListener('submit', async event => {
   event.preventDefault();
+  const drawingDate = drawingDateInput.value;
   const label = document.querySelector('#label').value.trim();
   const numbers = document.querySelector('#numbers').value.trim().split(/\s+/).map(Number);
   const powerball = Number(document.querySelector('#powerball').value);
   const doublePlay = document.querySelector('#double-play').checked;
-
-  if (tickets.some(ticket => ticket.label.toLowerCase() === label.toLowerCase())) {
-    alert('Each ticket must have a unique label.');
-    return;
-  }
 
   const validation = validateTicket({ label, numbers, powerball });
   if (!validation.valid) {
@@ -55,19 +120,124 @@ form.addEventListener('submit', event => {
     return;
   }
 
-  tickets.push({ id: crypto.randomUUID(), label, numbers, powerball, doublePlay });
-  saveTickets(tickets);
+  if (currentUser) {
+    try {
+      const created = await createServerTicket({ drawingDate, label, numbers, powerball, doublePlay });
+      tickets.unshift(normalizeServerTicket(created));
+    } catch (error) {
+      console.error(error);
+      if (error.code === '23505') {
+        alert('That label is already used for this drawing date. Choose a different label.');
+      } else {
+        alert(`Could not save ticket: ${error.message}`);
+      }
+      return;
+    }
+  } else {
+    if (tickets.some(ticket =>
+      (ticket.drawingDate || '') === drawingDate &&
+      ticket.label.toLowerCase() === label.toLowerCase()
+    )) {
+      alert('Each ticket label must be unique for its drawing date.');
+      return;
+    }
+
+    tickets.push({ id: crypto.randomUUID(), drawingDate, label, numbers, powerball, doublePlay });
+    saveTickets(tickets);
+  }
+
   form.reset();
+  drawingDateInput.value = drawingDate;
   render();
 });
 
-list.addEventListener('click', event => {
+list.addEventListener('click', async event => {
   const button = event.target.closest('.delete');
   if (!button) return;
+
+  if (currentUser) {
+    try {
+      await deleteServerTicket(button.dataset.id);
+    } catch (error) {
+      console.error(error);
+      alert(`Could not delete ticket: ${error.message}`);
+      return;
+    }
+  } else {
+    tickets = tickets.filter(ticket => ticket.id !== button.dataset.id);
+    saveTickets(tickets);
+  }
+
   tickets = tickets.filter(ticket => ticket.id !== button.dataset.id);
-  saveTickets(tickets);
   render();
 });
+
+authForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  if (!supabase) {
+    alert('Connect a Supabase project first.');
+    return;
+  }
+
+  try {
+    await signIn(emailInput.value.trim(), passwordInput.value);
+    currentUser = await getCurrentUser();
+    passwordInput.value = '';
+    setAccountUi();
+    await refreshTickets();
+  } catch (error) {
+    alert(`Sign in failed: ${error.message}`);
+  }
+});
+
+signUpButton.addEventListener('click', async () => {
+  if (!supabase) {
+    alert('Connect a Supabase project first.');
+    return;
+  }
+
+  try {
+    const data = await signUp(emailInput.value.trim(), passwordInput.value);
+    if (data.session) {
+      currentUser = data.user;
+      passwordInput.value = '';
+      setAccountUi();
+      await refreshTickets();
+    } else {
+      alert('Account created. Check your email to confirm the account, then sign in.');
+    }
+  } catch (error) {
+    alert(`Account creation failed: ${error.message}`);
+  }
+});
+
+signOutButton.addEventListener('click', async () => {
+  try {
+    await signOut();
+    currentUser = null;
+    tickets = [];
+    setAccountUi();
+    render();
+  } catch (error) {
+    alert(`Sign out failed: ${error.message}`);
+  }
+});
+
+if (supabase) {
+  supabase.auth.onAuthStateChange(async (_event, session) => {
+    currentUser = session?.user || null;
+    setAccountUi();
+    await refreshTickets();
+  });
+
+  getCurrentUser().then(user => {
+    currentUser = user;
+    setAccountUi();
+    return refreshTickets();
+  }).catch(error => console.error(error));
+} else {
+  setAccountUi();
+}
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));

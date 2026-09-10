@@ -30,6 +30,13 @@
       </form>
     </section>
 
+    <section class="card" id="notification-card" hidden>
+      <h2>Notifications</h2>
+      <p id="notification-status">Get an alert when one of your tickets wins.</p>
+      <label class="checkbox"><input id="notifications-toggle" type="checkbox" /> Enable winning-ticket push notifications</label>
+      <small>Notifications are optional and can be turned off at any time.</small>
+    </section>
+
     <section class="card">
       <h2>Add a ticket</h2>
       <form id="ticket-form">
@@ -48,7 +55,9 @@
         <h2>My tickets</h2>
         <span id="ticket-count">0 tickets</span>
       </div>
+      <div id="winner-summary" class="winner-summary" hidden></div>
       <div id="ticket-list" class="ticket-list"></div>
+      <button id="load-more" class="secondary" type="button" hidden>Load more tickets</button>
     </section>
   </main>
   <script type="module" src="src/app.js"></script>

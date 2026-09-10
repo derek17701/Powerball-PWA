@@ -1,19 +1,6 @@
 import { validateTicket } from '../lib/ticket-validator.js';
 import { loadTickets, saveTickets } from '../lib/storage.js';
-import {
-  supabase,
-  getCurrentUser,
-  signUp,
-  signIn,
-  signOut,
-  createServerTicket,
-  deleteServerTicket,
-  loadServerTicketsPage,
-  savePushSubscription,
-  disablePushSubscriptions,
-  loadNotificationStatus,
-  checkMyTickets
-} from '../lib/database.js';
+import { supabase, getCurrentUser, signUp, signIn, signOut, createServerTicket, deleteServerTicket, loadServerTicketsPage, savePushSubscription, disablePushSubscriptions, loadNotificationStatus, checkMyTickets } from '../lib/database.js';
 import { VAPID_PUBLIC_KEY } from '../lib/config.js';
 
 const form = document.querySelector('#ticket-form');
@@ -59,70 +46,28 @@ function render() {
   const winnerTickets = tickets.filter(ticket => ticket.result?.is_winner);
   const otherTickets = tickets.filter(ticket => !ticket.result?.is_winner);
   count.textContent = `${normalTotal} ticket${normalTotal === 1 ? '' : 's'}`;
-
-  if (!tickets.length) {
-    list.innerHTML = '<p class="empty">No tickets added yet.</p>';
-    loadMoreButton.hidden = true;
-    return;
-  }
-
-  if (winnerTickets.length) {
-    winnerSummary.hidden = false;
-    winnerSummary.textContent = `🏆 ${winnerTickets.length}${winnerCount > winnerTickets.length ? '+' : ''} winning ticket${winnerTickets.length === 1 ? '' : 's'} loaded first.`;
-  } else {
-    winnerSummary.hidden = true;
-  }
+  if (!tickets.length) { list.innerHTML = '<p class="empty">No tickets added yet.</p>'; loadMoreButton.hidden = true; return; }
+  if (winnerTickets.length) { winnerSummary.hidden = false; winnerSummary.textContent = `🏆 ${winnerTickets.length}${winnerCount > winnerTickets.length ? '+' : ''} winning ticket${winnerTickets.length === 1 ? '' : 's'} loaded first.`; }
+  else winnerSummary.hidden = true;
 
   [...winnerTickets, ...otherTickets].forEach(ticket => {
     const card = document.createElement('article');
     card.className = `ticket${ticket.result?.is_winner ? ' winner' : ''}`;
     const powerPlayText = ticket.powerPlay ? '<small>Power Play: Yes</small>' : '';
-    const resultText = ticket.result?.is_winner
-      ? `<div><strong>🏆 ${escapeHtml(formatPrize(ticket.result.main_prize_amount, ticket.result.main_prize_tier))}</strong></div>`
-      : ticket.result ? '<small>No main-draw prize</small>' : '<small>Not checked yet</small>';
-    const doubleText = ticket.result?.double_play_prize_tier
-      ? `<small>Double Play: ${escapeHtml(formatPrize(ticket.result.double_play_prize_amount, ticket.result.double_play_prize_tier))}</small>`
-      : ticket.doublePlay ? '<small>Double Play: Yes</small>' : '';
-
-    card.innerHTML = `
-      <div>
-        ${ticket.result?.is_winner ? '<span class="winner-badge">WINNER</span>' : ''}
-        <strong>${escapeHtml(ticket.label)}</strong>
-        <div><small>Drawing: ${escapeHtml(ticket.drawingDate || 'Not set')}</small></div>
-        <div>${ticket.numbers.join(' • ')} <b>PB ${ticket.powerball}</b></div>
-        ${powerPlayText}
-        ${doubleText}
-        ${resultText}
-      </div>
-      <button class="delete" data-id="${ticket.id}" type="button">Delete</button>
-    `;
+    const resultText = ticket.result?.is_winner ? `<div><strong>🏆 ${escapeHtml(formatPrize(ticket.result.main_prize_amount, ticket.result.main_prize_tier))}</strong></div>` : ticket.result ? '<small>No main-draw prize</small>' : '<small>Not checked yet</small>';
+    const doubleText = ticket.result?.double_play_prize_tier ? `<small>Double Play: ${escapeHtml(formatPrize(ticket.result.double_play_prize_amount, ticket.result.double_play_prize_tier))}</small>` : ticket.doublePlay ? '<small>Double Play: Yes</small>' : '';
+    card.innerHTML = `<div>${ticket.result?.is_winner ? '<span class="winner-badge">WINNER</span>' : ''}<strong>${escapeHtml(ticket.label)}</strong><div><small>Drawing: ${escapeHtml(ticket.drawingDate || 'Not set')}</small></div><div>${ticket.numbers.join(' • ')} <b>PB ${ticket.powerball}</b></div>${powerPlayText}${doubleText}${resultText}</div><button class="delete" data-id="${ticket.id}" type="button">Delete</button>`;
     list.appendChild(card);
   });
   loadMoreButton.hidden = !normalCursor;
 }
 
-function escapeHtml(value) {
-  return String(value).replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
-}
+function escapeHtml(value) { return String(value).replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char])); }
 
 function setAccountUi() {
-  if (!supabase) {
-    accountStatus.textContent = 'Server database is not configured yet. Tickets will use this browser until Supabase is connected.';
-    signOutButton.hidden = true;
-    notificationCard.hidden = true;
-    return;
-  }
-  if (currentUser) {
-    accountStatus.textContent = `Signed in as ${currentUser.email}`;
-    signOutButton.hidden = false;
-    signUpButton.hidden = true;
-    notificationCard.hidden = false;
-  } else {
-    accountStatus.textContent = 'Sign in to save your tickets to your account on the server.';
-    signOutButton.hidden = true;
-    signUpButton.hidden = false;
-    notificationCard.hidden = true;
-  }
+  if (!supabase) { accountStatus.textContent = 'Server database is not configured yet. Tickets will use this browser until Supabase is connected.'; signOutButton.hidden = true; notificationCard.hidden = true; return; }
+  if (currentUser) { accountStatus.textContent = `Signed in as ${currentUser.email}`; signOutButton.hidden = false; signUpButton.hidden = true; notificationCard.hidden = false; }
+  else { accountStatus.textContent = 'Sign in to save your tickets to your account on the server.'; signOutButton.hidden = true; signUpButton.hidden = false; notificationCard.hidden = true; }
 }
 
 async function refreshTickets({ reset = true } = {}) {
@@ -132,32 +77,25 @@ async function refreshTickets({ reset = true } = {}) {
       normalCursor = null;
       tickets = [];
       const winnersPage = await loadServerTicketsPage({ winnersOnly: true, limit: PAGE_SIZE });
-      const normalPage = await loadServerTicketsPage({ winnersOnly: false, limit: PAGE_SIZE });
-      const winners = winnersPage.tickets.map(normalizeServerTicket);
-      const normal = normalPage.tickets.map(normalizeServerTicket).filter(ticket => !ticket.result?.is_winner);
+      const normalPage = await loadServerTicketsPage({ excludeWinners: true, limit: PAGE_SIZE });
       winnerCount = winnersPage.count;
-      normalTotal = normalPage.count;
-      tickets = [...winners, ...normal];
+      normalTotal = normalPage.count + winnerCount;
+      tickets = [...winnersPage.tickets.map(normalizeServerTicket), ...normalPage.tickets.map(normalizeServerTicket)];
       normalCursor = normalPage.nextCursor;
     } else {
-      const page = await loadServerTicketsPage({ winnersOnly: false, cursor: normalCursor, limit: PAGE_SIZE });
-      tickets.push(...page.tickets.map(normalizeServerTicket).filter(ticket => !ticket.result?.is_winner));
+      const page = await loadServerTicketsPage({ excludeWinners: true, cursor: normalCursor, limit: PAGE_SIZE });
+      tickets.push(...page.tickets.map(normalizeServerTicket));
       normalCursor = page.nextCursor;
-      normalTotal = page.count;
+      normalTotal = page.count + winnerCount;
     }
     render();
-  } catch (error) {
-    console.error(error);
-    alert(`Could not load server tickets: ${error.message}`);
-  }
+  } catch (error) { console.error(error); alert(`Could not load server tickets: ${error.message}`); }
 }
 
 async function updateNotificationStatus() {
   if (!currentUser || !supabase) return;
-  try {
-    notificationsToggle.checked = await loadNotificationStatus();
-    notificationStatus.textContent = notificationsToggle.checked ? 'Winning-ticket push notifications are enabled.' : 'Get an alert when one of your tickets wins.';
-  } catch (error) { console.error(error); }
+  try { notificationsToggle.checked = await loadNotificationStatus(); notificationStatus.textContent = notificationsToggle.checked ? 'Winning-ticket push notifications are enabled.' : 'Get an alert when one of your tickets wins.'; }
+  catch (error) { console.error(error); }
 }
 
 function base64ToUint8Array(base64) {
@@ -198,61 +136,42 @@ form.addEventListener('submit', async event => {
   const doublePlay = document.querySelector('#double-play').checked;
   const validation = validateTicket({ label, numbers, powerball });
   if (!validation.valid) { alert(validation.error); return; }
-
   if (currentUser) {
     try { await createServerTicket({ drawingDate, label, numbers, powerball, powerPlay, doublePlay }); await refreshTickets(); }
     catch (error) { console.error(error); alert(error.code === '23505' ? 'That label is already used for this drawing date. Choose a different label.' : `Could not save ticket: ${error.message}`); return; }
   } else {
     if (tickets.some(ticket => (ticket.drawingDate || '') === drawingDate && ticket.label.toLowerCase() === label.toLowerCase())) { alert('Each ticket label must be unique for its drawing date.'); return; }
-    tickets.push({ id: crypto.randomUUID(), drawingDate, label, numbers, powerball, powerPlay, doublePlay });
-    saveTickets(tickets);
+    tickets.push({ id: crypto.randomUUID(), drawingDate, label, numbers, powerball, powerPlay, doublePlay }); saveTickets(tickets);
   }
-  form.reset();
-  drawingDateInput.value = drawingDate;
-  render();
+  form.reset(); drawingDateInput.value = drawingDate; render();
 });
 
 list.addEventListener('click', async event => {
-  const button = event.target.closest('.delete');
-  if (!button) return;
-  if (currentUser) {
-    try { await deleteServerTicket(button.dataset.id); await refreshTickets(); }
-    catch (error) { console.error(error); alert(`Could not delete ticket: ${error.message}`); }
-    return;
-  }
-  tickets = tickets.filter(ticket => ticket.id !== button.dataset.id);
-  saveTickets(tickets);
-  render();
+  const button = event.target.closest('.delete'); if (!button) return;
+  if (currentUser) { try { await deleteServerTicket(button.dataset.id); await refreshTickets(); } catch (error) { console.error(error); alert(`Could not delete ticket: ${error.message}`); } return; }
+  tickets = tickets.filter(ticket => ticket.id !== button.dataset.id); saveTickets(tickets); render();
 });
 
 loadMoreButton.addEventListener('click', () => refreshTickets({ reset: false }));
 
 checkDrawingButton.addEventListener('click', async () => {
   if (!currentUser) { alert('Sign in before checking server tickets.'); return; }
-  checkDrawingButton.disabled = true;
-  checkDrawingButton.textContent = 'Checking…';
-  try {
-    const result = await checkMyTickets(drawingDateInput.value);
-    alert(`Checked ${result.checked} tickets. ${result.winners} winning ticket${result.winners === 1 ? '' : 's'} found.`);
-    await refreshTickets();
-  } catch (error) { console.error(error); alert(`Could not check tickets: ${error.message}`); }
+  checkDrawingButton.disabled = true; checkDrawingButton.textContent = 'Checking…';
+  try { const result = await checkMyTickets(drawingDateInput.value); alert(`Checked ${result.checked} tickets. ${result.winners} winning ticket${result.winners === 1 ? '' : 's'} found.`); await refreshTickets(); }
+  catch (error) { console.error(error); alert(`Could not check tickets: ${error.message}`); }
   finally { checkDrawingButton.disabled = false; checkDrawingButton.textContent = 'Check selected drawing'; }
 });
 
 authForm.addEventListener('submit', async event => {
-  event.preventDefault();
-  if (!supabase) { alert('Connect a Supabase project first.'); return; }
+  event.preventDefault(); if (!supabase) { alert('Connect a Supabase project first.'); return; }
   try { await signIn(emailInput.value.trim(), passwordInput.value); currentUser = await getCurrentUser(); passwordInput.value = ''; setAccountUi(); await updateNotificationStatus(); await refreshTickets(); }
   catch (error) { alert(`Sign in failed: ${error.message}`); }
 });
 
 signUpButton.addEventListener('click', async () => {
   if (!supabase) { alert('Connect a Supabase project first.'); return; }
-  try {
-    const data = await signUp(emailInput.value.trim(), passwordInput.value);
-    if (data.session) { currentUser = data.user; passwordInput.value = ''; setAccountUi(); await updateNotificationStatus(); await refreshTickets(); }
-    else alert('Account created. Check your email to confirm the account, then sign in.');
-  } catch (error) { alert(`Account creation failed: ${error.message}`); }
+  try { const data = await signUp(emailInput.value.trim(), passwordInput.value); if (data.session) { currentUser = data.user; passwordInput.value = ''; setAccountUi(); await updateNotificationStatus(); await refreshTickets(); } else alert('Account created. Check your email to confirm the account, then sign in.'); }
+  catch (error) { alert(`Account creation failed: ${error.message}`); }
 });
 
 signOutButton.addEventListener('click', async () => {

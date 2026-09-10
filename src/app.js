@@ -16,7 +16,6 @@ const list = document.querySelector('#ticket-list');
 const count = document.querySelector('#ticket-count');
 const drawingDateInput = document.querySelector('#drawing-date');
 const powerPlayInput = document.querySelector('#power-play');
-const powerPlayMultiplierInput = document.querySelector('#power-play-multiplier');
 const authForm = document.querySelector('#auth-form');
 const emailInput = document.querySelector('#email');
 const passwordInput = document.querySelector('#password');
@@ -33,11 +32,6 @@ function today() {
 
 drawingDateInput.value = today();
 
-powerPlayInput.addEventListener('change', () => {
-  powerPlayMultiplierInput.disabled = !powerPlayInput.checked;
-  if (!powerPlayInput.checked) powerPlayMultiplierInput.value = '';
-});
-
 function normalizeServerTicket(ticket) {
   return {
     id: ticket.id,
@@ -47,7 +41,6 @@ function normalizeServerTicket(ticket) {
     numbers: ticket.numbers,
     powerball: ticket.powerball,
     powerPlay: Boolean(ticket.power_play),
-    powerPlayMultiplier: ticket.power_play_multiplier,
     doublePlay: Boolean(ticket.double_play),
     createdAt: ticket.created_at,
     updatedAt: ticket.updated_at
@@ -67,7 +60,7 @@ function render() {
     const card = document.createElement('article');
     card.className = 'ticket';
     const powerPlayText = ticket.powerPlay
-      ? `<small>Power Play: ${ticket.powerPlayMultiplier ? `${ticket.powerPlayMultiplier}×` : 'Yes'}</small>`
+      ? '<small>Power Play: Yes</small>'
       : '';
     card.innerHTML = `
       <div>
@@ -129,7 +122,6 @@ form.addEventListener('submit', async event => {
   const numbers = document.querySelector('#numbers').value.trim().split(/\s+/).map(Number);
   const powerball = Number(document.querySelector('#powerball').value);
   const powerPlay = powerPlayInput.checked;
-  const powerPlayMultiplier = powerPlay ? Number(powerPlayMultiplierInput.value) : null;
   const doublePlay = document.querySelector('#double-play').checked;
 
   const validation = validateTicket({ label, numbers, powerball });
@@ -138,14 +130,9 @@ form.addEventListener('submit', async event => {
     return;
   }
 
-  if (powerPlay && ![2, 3, 4, 5, 10].includes(powerPlayMultiplier)) {
-    alert('Select a valid Power Play multiplier.');
-    return;
-  }
-
   if (currentUser) {
     try {
-      const created = await createServerTicket({ drawingDate, label, numbers, powerball, powerPlay, powerPlayMultiplier, doublePlay });
+      const created = await createServerTicket({ drawingDate, label, numbers, powerball, powerPlay, doublePlay });
       tickets.unshift(normalizeServerTicket(created));
     } catch (error) {
       console.error(error);
@@ -172,7 +159,6 @@ form.addEventListener('submit', async event => {
       numbers,
       powerball,
       powerPlay,
-      powerPlayMultiplier,
       doublePlay
     });
     saveTickets(tickets);
@@ -180,7 +166,6 @@ form.addEventListener('submit', async event => {
 
   form.reset();
   drawingDateInput.value = drawingDate;
-  powerPlayMultiplierInput.disabled = true;
   render();
 });
 

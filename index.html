@@ -13,7 +13,7 @@
   <main class="app-shell">
     <header>
       <h1>Powerball Ticket Tracker</h1>
-      <p>Track tickets, labels, Double Play, and drawing results.</p>
+      <p>Track tickets, labels, Power Play, Double Play, and drawing results.</p>
     </header>
 
     <section class="card" id="account-card">
@@ -37,6 +37,17 @@
         <label>Unique label <input id="label" required maxlength="40" placeholder="PB-001" /></label>
         <label>Numbers <input id="numbers" required placeholder="1 12 23 34 45" /></label>
         <label>Powerball <input id="powerball" required inputmode="numeric" placeholder="7" /></label>
+        <label class="checkbox"><input id="power-play" type="checkbox" /> Power Play</label>
+        <label>Power Play multiplier
+          <select id="power-play-multiplier" disabled>
+            <option value="">None</option>
+            <option value="2">2×</option>
+            <option value="3">3×</option>
+            <option value="4">4×</option>
+            <option value="5">5×</option>
+            <option value="10">10×</option>
+          </select>
+        </label>
         <label class="checkbox"><input id="double-play" type="checkbox" /> Double Play</label>
         <button type="submit">Add Ticket</button>
       </form>

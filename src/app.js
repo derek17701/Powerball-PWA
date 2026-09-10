@@ -15,6 +15,8 @@ const form = document.querySelector('#ticket-form');
 const list = document.querySelector('#ticket-list');
 const count = document.querySelector('#ticket-count');
 const drawingDateInput = document.querySelector('#drawing-date');
+const powerPlayInput = document.querySelector('#power-play');
+const powerPlayMultiplierInput = document.querySelector('#power-play-multiplier');
 const authForm = document.querySelector('#auth-form');
 const emailInput = document.querySelector('#email');
 const passwordInput = document.querySelector('#password');
@@ -31,14 +33,24 @@ function today() {
 
 drawingDateInput.value = today();
 
+powerPlayInput.addEventListener('change', () => {
+  powerPlayMultiplierInput.disabled = !powerPlayInput.checked;
+  if (!powerPlayInput.checked) powerPlayMultiplierInput.value = '';
+});
+
 function normalizeServerTicket(ticket) {
   return {
     id: ticket.id,
+    userId: ticket.user_id,
     drawingDate: ticket.drawing_date,
     label: ticket.label,
     numbers: ticket.numbers,
     powerball: ticket.powerball,
-    doublePlay: ticket.double_play
+    powerPlay: Boolean(ticket.power_play),
+    powerPlayMultiplier: ticket.power_play_multiplier,
+    doublePlay: Boolean(ticket.double_play),
+    createdAt: ticket.created_at,
+    updatedAt: ticket.updated_at
   };
 }
 
@@ -54,11 +66,15 @@ function render() {
   tickets.forEach(ticket => {
     const card = document.createElement('article');
     card.className = 'ticket';
+    const powerPlayText = ticket.powerPlay
+      ? `<small>Power Play: ${ticket.powerPlayMultiplier ? `${ticket.powerPlayMultiplier}×` : 'Yes'}</small>`
+      : '';
     card.innerHTML = `
       <div>
         <strong>${escapeHtml(ticket.label)}</strong>
         <div><small>Drawing: ${escapeHtml(ticket.drawingDate || 'Not set')}</small></div>
         <div>${ticket.numbers.join(' • ')} <b>PB ${ticket.powerball}</b></div>
+        ${powerPlayText}
         ${ticket.doublePlay ? '<small>Double Play: Yes</small>' : ''}
       </div>
       <button class="delete" data-id="${ticket.id}" type="button">Delete</button>
@@ -112,6 +128,8 @@ form.addEventListener('submit', async event => {
   const label = document.querySelector('#label').value.trim();
   const numbers = document.querySelector('#numbers').value.trim().split(/\s+/).map(Number);
   const powerball = Number(document.querySelector('#powerball').value);
+  const powerPlay = powerPlayInput.checked;
+  const powerPlayMultiplier = powerPlay ? Number(powerPlayMultiplierInput.value) : null;
   const doublePlay = document.querySelector('#double-play').checked;
 
   const validation = validateTicket({ label, numbers, powerball });
@@ -120,9 +138,14 @@ form.addEventListener('submit', async event => {
     return;
   }
 
+  if (powerPlay && ![2, 3, 4, 5, 10].includes(powerPlayMultiplier)) {
+    alert('Select a valid Power Play multiplier.');
+    return;
+  }
+
   if (currentUser) {
     try {
-      const created = await createServerTicket({ drawingDate, label, numbers, powerball, doublePlay });
+      const created = await createServerTicket({ drawingDate, label, numbers, powerball, powerPlay, powerPlayMultiplier, doublePlay });
       tickets.unshift(normalizeServerTicket(created));
     } catch (error) {
       console.error(error);
@@ -142,12 +165,22 @@ form.addEventListener('submit', async event => {
       return;
     }
 
-    tickets.push({ id: crypto.randomUUID(), drawingDate, label, numbers, powerball, doublePlay });
+    tickets.push({
+      id: crypto.randomUUID(),
+      drawingDate,
+      label,
+      numbers,
+      powerball,
+      powerPlay,
+      powerPlayMultiplier,
+      doublePlay
+    });
     saveTickets(tickets);
   }
 
   form.reset();
   drawingDateInput.value = drawingDate;
+  powerPlayMultiplierInput.disabled = true;
   render();
 });
 

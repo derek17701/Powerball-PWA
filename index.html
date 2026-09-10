@@ -16,9 +16,24 @@
       <p>Track tickets, labels, Double Play, and drawing results.</p>
     </header>
 
+    <section class="card" id="account-card">
+      <h2>My account</h2>
+      <p id="account-status">Checking account connection…</p>
+      <form id="auth-form">
+        <label>Email <input id="email" type="email" required autocomplete="email" placeholder="you@example.com" /></label>
+        <label>Password <input id="password" type="password" required minlength="6" autocomplete="current-password" placeholder="At least 6 characters" /></label>
+        <div class="button-row">
+          <button id="sign-in" type="submit">Sign in</button>
+          <button id="sign-up" type="button">Create account</button>
+          <button id="sign-out" type="button" hidden>Sign out</button>
+        </div>
+      </form>
+    </section>
+
     <section class="card">
       <h2>Add a ticket</h2>
       <form id="ticket-form">
+        <label>Drawing date <input id="drawing-date" type="date" required /></label>
         <label>Unique label <input id="label" required maxlength="40" placeholder="PB-001" /></label>
         <label>Numbers <input id="numbers" required placeholder="1 12 23 34 45" /></label>
         <label>Powerball <input id="powerball" required inputmode="numeric" placeholder="7" /></label>

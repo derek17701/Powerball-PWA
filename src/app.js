@@ -41,26 +41,11 @@ let normalTotal = 0;
 let winnerCount = 0;
 const PAGE_SIZE = 50;
 
-function today() {
-  return new Date().toISOString().slice(0, 10);
-}
-
+function today() { return new Date().toISOString().slice(0, 10); }
 drawingDateInput.value = today();
 
 function normalizeServerTicket(ticket) {
-  return {
-    id: ticket.id,
-    userId: ticket.user_id,
-    drawingDate: ticket.drawing_date,
-    label: ticket.label,
-    numbers: ticket.numbers,
-    powerball: ticket.powerball,
-    powerPlay: Boolean(ticket.power_play),
-    doublePlay: Boolean(ticket.double_play),
-    createdAt: ticket.created_at,
-    updatedAt: ticket.updated_at,
-    result: ticket.result || null
-  };
+  return { id: ticket.id, userId: ticket.user_id, drawingDate: ticket.drawing_date, label: ticket.label, numbers: ticket.numbers, powerball: ticket.powerball, powerPlay: Boolean(ticket.power_play), doublePlay: Boolean(ticket.double_play), createdAt: ticket.created_at, updatedAt: ticket.updated_at, result: ticket.result || null };
 }
 
 function formatPrize(amount, tier) {
@@ -73,7 +58,7 @@ function render() {
   list.innerHTML = '';
   const winnerTickets = tickets.filter(ticket => ticket.result?.is_winner);
   const otherTickets = tickets.filter(ticket => !ticket.result?.is_winner);
-  count.textContent = `${normalTotal + winnerCount} ticket${normalTotal + winnerCount === 1 ? '' : 's'}`;
+  count.textContent = `${normalTotal} ticket${normalTotal === 1 ? '' : 's'}`;
 
   if (!tickets.length) {
     list.innerHTML = '<p class="empty">No tickets added yet.</p>';
@@ -94,14 +79,10 @@ function render() {
     const powerPlayText = ticket.powerPlay ? '<small>Power Play: Yes</small>' : '';
     const resultText = ticket.result?.is_winner
       ? `<div><strong>🏆 ${escapeHtml(formatPrize(ticket.result.main_prize_amount, ticket.result.main_prize_tier))}</strong></div>`
-      : ticket.result
-        ? '<small>No main-draw prize</small>'
-        : '<small>Not checked yet</small>';
+      : ticket.result ? '<small>No main-draw prize</small>' : '<small>Not checked yet</small>';
     const doubleText = ticket.result?.double_play_prize_tier
       ? `<small>Double Play: ${escapeHtml(formatPrize(ticket.result.double_play_prize_amount, ticket.result.double_play_prize_tier))}</small>`
-      : ticket.doublePlay
-        ? '<small>Double Play: Yes</small>'
-        : '';
+      : ticket.doublePlay ? '<small>Double Play: Yes</small>' : '';
 
     card.innerHTML = `
       <div>
@@ -117,14 +98,11 @@ function render() {
     `;
     list.appendChild(card);
   });
-
   loadMoreButton.hidden = !normalCursor;
 }
 
 function escapeHtml(value) {
-  return String(value).replace(/[&<>'"]/g, char => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
-  }[char]));
+  return String(value).replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
 }
 
 function setAccountUi() {
@@ -134,7 +112,6 @@ function setAccountUi() {
     notificationCard.hidden = true;
     return;
   }
-
   if (currentUser) {
     accountStatus.textContent = `Signed in as ${currentUser.email}`;
     signOutButton.hidden = false;
@@ -149,11 +126,7 @@ function setAccountUi() {
 }
 
 async function refreshTickets({ reset = true } = {}) {
-  if (!currentUser) {
-    render();
-    return;
-  }
-
+  if (!currentUser) { render(); return; }
   try {
     if (reset) {
       normalCursor = null;
@@ -168,8 +141,7 @@ async function refreshTickets({ reset = true } = {}) {
       normalCursor = normalPage.nextCursor;
     } else {
       const page = await loadServerTicketsPage({ winnersOnly: false, cursor: normalCursor, limit: PAGE_SIZE });
-      const normal = page.tickets.map(normalizeServerTicket).filter(ticket => !ticket.result?.is_winner);
-      tickets.push(...normal);
+      tickets.push(...page.tickets.map(normalizeServerTicket).filter(ticket => !ticket.result?.is_winner));
       normalCursor = page.nextCursor;
       normalTotal = page.count;
     }
@@ -184,9 +156,8 @@ async function updateNotificationStatus() {
   if (!currentUser || !supabase) return;
   try {
     notificationsToggle.checked = await loadNotificationStatus();
-  } catch (error) {
-    console.error(error);
-  }
+    notificationStatus.textContent = notificationsToggle.checked ? 'Winning-ticket push notifications are enabled.' : 'Get an alert when one of your tickets wins.';
+  } catch (error) { console.error(error); }
 }
 
 function base64ToUint8Array(base64) {
@@ -196,45 +167,24 @@ function base64ToUint8Array(base64) {
 }
 
 async function enableNotifications() {
-  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
-    throw new Error('Push notifications are not supported by this browser.');
-  }
-  if (!VAPID_PUBLIC_KEY) {
-    throw new Error('Push notifications need the app notification key to be configured first.');
-  }
-
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) throw new Error('Push notifications are not supported by this browser.');
+  if (!VAPID_PUBLIC_KEY) throw new Error('Push notifications need the app notification key to be configured first.');
   const permission = await Notification.requestPermission();
   if (permission !== 'granted') throw new Error('Notification permission was not granted.');
-
   const registration = await navigator.serviceWorker.ready;
   let subscription = await registration.pushManager.getSubscription();
-  if (!subscription) {
-    subscription = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: base64ToUint8Array(VAPID_PUBLIC_KEY)
-    });
-  }
+  if (!subscription) subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: base64ToUint8Array(VAPID_PUBLIC_KEY) });
   await savePushSubscription(subscription.toJSON());
   notificationStatus.textContent = 'Winning-ticket push notifications are enabled.';
 }
 
 notificationsToggle.addEventListener('change', async () => {
   if (notificationsToggle.checked) {
-    try {
-      await enableNotifications();
-    } catch (error) {
-      notificationsToggle.checked = false;
-      notificationStatus.textContent = error.message;
-      alert(error.message);
-    }
+    try { await enableNotifications(); }
+    catch (error) { notificationsToggle.checked = false; notificationStatus.textContent = error.message; alert(error.message); }
   } else {
-    try {
-      await disablePushSubscriptions();
-      notificationStatus.textContent = 'Winning-ticket push notifications are off.';
-    } catch (error) {
-      console.error(error);
-      alert(`Could not disable notifications: ${error.message}`);
-    }
+    try { await disablePushSubscriptions(); notificationStatus.textContent = 'Winning-ticket push notifications are off.'; }
+    catch (error) { console.error(error); alert(`Could not disable notifications: ${error.message}`); }
   }
 });
 
@@ -246,35 +196,17 @@ form.addEventListener('submit', async event => {
   const powerball = Number(document.querySelector('#powerball').value);
   const powerPlay = powerPlayInput.checked;
   const doublePlay = document.querySelector('#double-play').checked;
-
   const validation = validateTicket({ label, numbers, powerball });
-  if (!validation.valid) {
-    alert(validation.error);
-    return;
-  }
+  if (!validation.valid) { alert(validation.error); return; }
 
   if (currentUser) {
-    try {
-      await createServerTicket({ drawingDate, label, numbers, powerball, powerPlay, doublePlay });
-      await refreshTickets();
-    } catch (error) {
-      console.error(error);
-      if (error.code === '23505') {
-        alert('That label is already used for this drawing date. Choose a different label.');
-      } else {
-        alert(`Could not save ticket: ${error.message}`);
-      }
-      return;
-    }
+    try { await createServerTicket({ drawingDate, label, numbers, powerball, powerPlay, doublePlay }); await refreshTickets(); }
+    catch (error) { console.error(error); alert(error.code === '23505' ? 'That label is already used for this drawing date. Choose a different label.' : `Could not save ticket: ${error.message}`); return; }
   } else {
-    if (tickets.some(ticket => (ticket.drawingDate || '') === drawingDate && ticket.label.toLowerCase() === label.toLowerCase())) {
-      alert('Each ticket label must be unique for its drawing date.');
-      return;
-    }
+    if (tickets.some(ticket => (ticket.drawingDate || '') === drawingDate && ticket.label.toLowerCase() === label.toLowerCase())) { alert('Each ticket label must be unique for its drawing date.'); return; }
     tickets.push({ id: crypto.randomUUID(), drawingDate, label, numbers, powerball, powerPlay, doublePlay });
     saveTickets(tickets);
   }
-
   form.reset();
   drawingDateInput.value = drawingDate;
   render();
@@ -283,19 +215,11 @@ form.addEventListener('submit', async event => {
 list.addEventListener('click', async event => {
   const button = event.target.closest('.delete');
   if (!button) return;
-
   if (currentUser) {
-    try {
-      await deleteServerTicket(button.dataset.id);
-      await refreshTickets();
-      return;
-    } catch (error) {
-      console.error(error);
-      alert(`Could not delete ticket: ${error.message}`);
-      return;
-    }
+    try { await deleteServerTicket(button.dataset.id); await refreshTickets(); }
+    catch (error) { console.error(error); alert(`Could not delete ticket: ${error.message}`); }
+    return;
   }
-
   tickets = tickets.filter(ticket => ticket.id !== button.dataset.id);
   saveTickets(tickets);
   render();
@@ -304,98 +228,42 @@ list.addEventListener('click', async event => {
 loadMoreButton.addEventListener('click', () => refreshTickets({ reset: false }));
 
 checkDrawingButton.addEventListener('click', async () => {
-  if (!currentUser) {
-    alert('Sign in before checking server tickets.');
-    return;
-  }
+  if (!currentUser) { alert('Sign in before checking server tickets.'); return; }
   checkDrawingButton.disabled = true;
   checkDrawingButton.textContent = 'Checking…';
   try {
     const result = await checkMyTickets(drawingDateInput.value);
     alert(`Checked ${result.checked} tickets. ${result.winners} winning ticket${result.winners === 1 ? '' : 's'} found.`);
     await refreshTickets();
-  } catch (error) {
-    console.error(error);
-    alert(`Could not check tickets: ${error.message}`);
-  } finally {
-    checkDrawingButton.disabled = false;
-    checkDrawingButton.textContent = 'Check selected drawing';
-  }
+  } catch (error) { console.error(error); alert(`Could not check tickets: ${error.message}`); }
+  finally { checkDrawingButton.disabled = false; checkDrawingButton.textContent = 'Check selected drawing'; }
 });
 
 authForm.addEventListener('submit', async event => {
   event.preventDefault();
-  if (!supabase) {
-    alert('Connect a Supabase project first.');
-    return;
-  }
-  try {
-    await signIn(emailInput.value.trim(), passwordInput.value);
-    currentUser = await getCurrentUser();
-    passwordInput.value = '';
-    setAccountUi();
-    await updateNotificationStatus();
-    await refreshTickets();
-  } catch (error) {
-    alert(`Sign in failed: ${error.message}`);
-  }
+  if (!supabase) { alert('Connect a Supabase project first.'); return; }
+  try { await signIn(emailInput.value.trim(), passwordInput.value); currentUser = await getCurrentUser(); passwordInput.value = ''; setAccountUi(); await updateNotificationStatus(); await refreshTickets(); }
+  catch (error) { alert(`Sign in failed: ${error.message}`); }
 });
 
 signUpButton.addEventListener('click', async () => {
-  if (!supabase) {
-    alert('Connect a Supabase project first.');
-    return;
-  }
+  if (!supabase) { alert('Connect a Supabase project first.'); return; }
   try {
     const data = await signUp(emailInput.value.trim(), passwordInput.value);
-    if (data.session) {
-      currentUser = data.user;
-      passwordInput.value = '';
-      setAccountUi();
-      await updateNotificationStatus();
-      await refreshTickets();
-    } else {
-      alert('Account created. Check your email to confirm the account, then sign in.');
-    }
-  } catch (error) {
-    alert(`Account creation failed: ${error.message}`);
-  }
+    if (data.session) { currentUser = data.user; passwordInput.value = ''; setAccountUi(); await updateNotificationStatus(); await refreshTickets(); }
+    else alert('Account created. Check your email to confirm the account, then sign in.');
+  } catch (error) { alert(`Account creation failed: ${error.message}`); }
 });
 
 signOutButton.addEventListener('click', async () => {
-  try {
-    await signOut();
-    currentUser = null;
-    tickets = [];
-    winnerCount = 0;
-    normalTotal = 0;
-    setAccountUi();
-    render();
-  } catch (error) {
-    alert(`Sign out failed: ${error.message}`);
-  }
+  try { await signOut(); currentUser = null; tickets = []; winnerCount = 0; normalTotal = 0; setAccountUi(); render(); }
+  catch (error) { alert(`Sign out failed: ${error.message}`); }
 });
 
 if (supabase) {
-  supabase.auth.onAuthStateChange(async (_event, session) => {
-    currentUser = session?.user || null;
-    setAccountUi();
-    if (currentUser) await updateNotificationStatus();
-    await refreshTickets();
-  });
+  supabase.auth.onAuthStateChange(async (_event, session) => { currentUser = session?.user || null; setAccountUi(); if (currentUser) await updateNotificationStatus(); await refreshTickets(); });
+  getCurrentUser().then(async user => { currentUser = user; setAccountUi(); if (currentUser) await updateNotificationStatus(); return refreshTickets(); }).catch(error => console.error(error));
+} else setAccountUi();
 
-  getCurrentUser().then(async user => {
-    currentUser = user;
-    setAccountUi();
-    if (currentUser) await updateNotificationStatus();
-    return refreshTickets();
-  }).catch(error => console.error(error));
-} else {
-  setAccountUi();
-}
-
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
-}
-
+if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
 render();
